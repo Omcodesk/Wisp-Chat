@@ -124,9 +124,15 @@ export function useConversation(conversationId: string | null, currentUserId: st
       });
     }
 
+    function onDeleted(payload: { conversationId: string; messageId: string }) {
+      if (payload.conversationId !== conversationId) return;
+      setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+    }
+
     socket.on("message:new", onNewMessage);
     socket.on("message:delivered", onDelivered);
     socket.on("message:read", onRead);
+    socket.on("message:deleted", onDeleted);
     socket.on("typing:start", onTypingStart);
     socket.on("typing:stop", onTypingStop);
 
@@ -134,10 +140,12 @@ export function useConversation(conversationId: string | null, currentUserId: st
       socket.off("message:new", onNewMessage);
       socket.off("message:delivered", onDelivered);
       socket.off("message:read", onRead);
+      socket.off("message:deleted", onDeleted);
       socket.off("typing:start", onTypingStart);
       socket.off("typing:stop", onTypingStop);
     };
   }, [conversationId, currentUserId]);
+
 
   // -------------------------------------------------------------------
   // Initial load + pagination.
@@ -265,6 +273,25 @@ export function useConversation(conversationId: string | null, currentUserId: st
     });
   }, []);
 
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      if (!conversationId) return;
+      // Optimistic local update
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+
+      const socket = getSocket();
+      socket.emit("message:delete", { conversationId, messageId }, async (res) => {
+        if (!res || !res.ok) {
+          // Fallback to REST API
+          await fetch(`/api/conversations/${conversationId}/messages/${messageId}`, {
+            method: "DELETE",
+          }).catch((err) => console.error("Failed to delete message via REST fallback", err));
+        }
+      });
+    },
+    [conversationId]
+  );
+
   return {
     messages,
     hasMore,
@@ -274,9 +301,11 @@ export function useConversation(conversationId: string | null, currentUserId: st
     send,
     addMessage,
     retry,
+    deleteMessage,
     markRead,
     notifyTyping,
     typingUserIds,
     connectionStatus,
   };
 }
+

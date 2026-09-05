@@ -20,7 +20,21 @@ let socket: Socket<ServerToClientEvents, ClientToServerEvents> | undefined;
  */
 export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> {
   if (!socket) {
-    socket = io(process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:4001", {
+    let socketUrl: string;
+    if (typeof window !== "undefined") {
+      // If accessed via a public tunnel or custom domain, route through same origin
+      if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+        socketUrl = window.location.origin;
+      } else if (window.location.port === "8080") {
+        socketUrl = window.location.origin;
+      } else {
+        socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:4001";
+      }
+    } else {
+      socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:4001";
+    }
+
+    socket = io(socketUrl, {
       withCredentials: true,
       autoConnect: true,
       reconnection: true,
@@ -31,3 +45,4 @@ export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> 
   }
   return socket;
 }
+

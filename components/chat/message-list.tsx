@@ -19,6 +19,7 @@ interface Props {
   loadingOlder: boolean;
   loadOlder: () => void;
   onRetry: (clientMessageId: string) => void;
+  onDelete?: (messageId: string) => void;
   peer: Peer | null;
 }
 
@@ -30,6 +31,7 @@ export function MessageList({
   loadingOlder,
   loadOlder,
   onRetry,
+  onDelete,
   peer,
 }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -143,7 +145,9 @@ export function MessageList({
                 showAvatar={showAvatar}
                 peer={peer}
                 onRetry={onRetry}
+                onDelete={onDelete}
               />
+
             );
           })}
         </div>

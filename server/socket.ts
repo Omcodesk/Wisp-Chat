@@ -50,9 +50,33 @@ const httpServer = createServer((req, res) => {
     });
     return;
   }
+
+  if (req.method === "POST" && req.url === "/internal/emit-deleted") {
+    if (req.headers["x-internal-secret"] !== INTERNAL_EMIT_SECRET) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const payload = JSON.parse(body) as { conversationId: string; messageId: string };
+        io.to(conversationRoom(payload.conversationId)).emit("message:deleted", payload);
+        res.writeHead(200);
+        res.end("ok");
+      } catch {
+        res.writeHead(400);
+        res.end();
+      }
+    });
+    return;
+  }
   res.writeHead(404);
   res.end();
 });
+
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(httpServer, {
   cors: { origin: APP_ORIGIN, credentials: true },
@@ -218,6 +242,29 @@ io.on("connection", async (socket: Socket<ClientToServerEvents, ServerToClientEv
       readAt,
     });
   });
+
+  // ---- message:delete ----------------------------------------------------
+  socket.on("message:delete", async ({ conversationId, messageId }, ack) => {
+    try {
+      await assertConversationMember(user.id, conversationId);
+      const msg = await prisma.message.findUnique({ where: { id: messageId } });
+      if (!msg) {
+        if (ack) ack({ ok: false, code: "NOT_FOUND", message: "Message not found" });
+        return;
+      }
+      if (msg.senderId !== user.id) {
+        if (ack) ack({ ok: false, code: "FORBIDDEN", message: "Only the sender can delete this message" });
+        return;
+      }
+      await prisma.message.delete({ where: { id: messageId } });
+      io.to(conversationRoom(conversationId)).emit("message:deleted", { conversationId, messageId });
+      if (ack) ack({ ok: true });
+    } catch (err) {
+      console.error("[socket] message:delete failed", err);
+      if (ack) ack({ ok: false, code: "SERVER_ERROR", message: "Could not delete message" });
+    }
+  });
+
 
   // ---- typing -------------------------------------------------------------
   socket.on("typing:start", async ({ conversationId }) => {

@@ -32,11 +32,13 @@ export function ConversationView({ conversationId, peer }: Props) {
     send,
     addMessage,
     retry,
+    deleteMessage,
     markRead,
     notifyTyping,
     typingUserIds,
     connectionStatus,
   } = useConversation(conversationId, currentUser.id);
+
 
   // Live presence for the peer
   const [peerOnline, setPeerOnline] = useState(false);
@@ -108,8 +110,10 @@ export function ConversationView({ conversationId, peer }: Props) {
         loadingOlder={loadingOlder}
         loadOlder={loadOlder}
         onRetry={retry}
+        onDelete={deleteMessage}
         peer={peer}
       />
+
       <Composer
         conversationId={conversationId}
         onSend={handleSend}

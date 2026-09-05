@@ -51,6 +51,7 @@ export interface ClientToServerEvents {
   "message:send": (payload: MessageSendPayload, ack: (res: MessageSendAck) => void) => void;
 
   "message:read": (payload: { conversationId: string; upToMessageId: string }) => void;
+  "message:delete": (payload: { conversationId: string; messageId: string }, ack?: (res: AckResult) => void) => void;
 
   "typing:start": (payload: { conversationId: string }) => void;
   "typing:stop": (payload: { conversationId: string }) => void;
@@ -60,6 +61,7 @@ export interface ServerToClientEvents {
   "message:new": (message: MessageDTO) => void;
   "message:delivered": (payload: { conversationId: string; messageId: string; deliveredAt: string }) => void;
   "message:read": (payload: { conversationId: string; readerId: string; upToMessageId: string; readAt: string }) => void;
+  "message:deleted": (payload: { conversationId: string; messageId: string }) => void;
 
   "typing:start": (payload: { conversationId: string; userId: string }) => void;
   "typing:stop": (payload: { conversationId: string; userId: string }) => void;

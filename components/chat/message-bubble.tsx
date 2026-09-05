@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { Check, CheckCheck, Clock, AlertCircle, RotateCcw } from "lucide-react";
+import { Check, CheckCheck, Clock, AlertCircle, RotateCcw, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils/cn";
 import type { ClientMessage } from "@/hooks/use-conversation";
@@ -18,7 +18,9 @@ interface Props {
   showAvatar: boolean;
   peer: Peer | null;
   onRetry: (clientMessageId: string) => void;
+  onDelete?: (messageId: string) => void;
 }
+
 
 function StatusIcon({ message, isSticker }: { message: ClientMessage; isSticker?: boolean }) {
   const iconColor = isSticker ? "text-ink-muted" : "text-white/60";
@@ -72,7 +74,7 @@ function SmallAvatar({ name, url }: { name: string; url: string | null }) {
   );
 }
 
-export function MessageBubble({ message, isOwn, showAvatar, peer, onRetry }: Props) {
+export function MessageBubble({ message, isOwn, showAvatar, peer, onRetry, onDelete }: Props) {
   const time = format(new Date(message.createdAt), "HH:mm");
 
   const bubbleContent = () => {
@@ -187,6 +189,19 @@ export function MessageBubble({ message, isOwn, showAvatar, peer, onRetry }: Pro
           </button>
         )}
       </div>
+
+      {/* Delete button (visible on hover for sent messages) */}
+      {isOwn && onDelete && message.status !== "pending" && (
+        <button
+          onClick={() => onDelete(message.id)}
+          title="Delete message"
+          aria-label="Delete message"
+          className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-1.5 rounded-lg text-ink-muted hover:text-danger hover:bg-surface-active self-center"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }
+
