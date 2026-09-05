@@ -1,0 +1,118 @@
+// ---------------------------------------------------------------------------
+// Prisma schema for the realtime 1:1 messaging app.
+//
+// Design notes (see README "Database design" for the full rationale):
+//
+// - ConversationMember has a compound unique key (conversationId, userId) so
+//   membership can never be duplicated, and it's the join Prisma uses for
+//   every authorization check ("is this user a member of this conversation").
+//
+// - Message has a compound unique key (conversationId, senderId,
+//   clientMessageId). That's the idempotency guarantee: the client generates
+//   a UUID per send attempt, and retries (network failure, socket reconnect,
+//   duplicate click) hit this constraint instead of creating a new row. See
+//   lib/socket message:send handler.
+//
+// - Message indexes are built around the one query pattern that matters at
+//   scale: "give me messages in conversation X, ordered by recency, before
+//   cursor Y". (conversationId, createdAt, id) supports that directly and
+//   also backs the unread-count / last-message lookups on the conversation
+//   list.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  GIF
+  STICKER
+  SYSTEM
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastSeenAt    DateTime  @default(now())
+
+  memberships   ConversationMember[]
+  messagesSent  Message[]            @relation("MessageSender")
+
+  @@index([email])
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime @default(now())
+
+  // Per-member read cursor. Storing this on the membership row (rather than
+  // updating every historical Message row) is what makes "mark as read"
+  // O(1) instead of O(unread messages). See README "Read state".
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Prevents duplicate membership rows outright - this IS the authorization
+  // source of truth ("SELECT 1 FROM ConversationMember WHERE ...").
+  @@unique([conversationId, userId])
+  @@index([userId, conversationId])
+  @@index([conversationId, userId])
+}
+
+model Message {
+  id              String      @id @default(cuid())
+  // Client-generated idempotency key. Combined with senderId + conversationId
+  // this is what makes retried sends safe. See lib/socket handlers.
+  clientMessageId String
+  conversationId  String
+  senderId        String
+  type            MessageType @default(TEXT)
+
+  // Text content (TEXT type) or caption (rare, currently unused for media).
+  content String?
+
+  // Media fields (IMAGE / GIF / STICKER).
+  mediaUrl      String?
+  mediaMimeType String?
+  mediaSize     Int?
+  mediaWidth    Int?
+  mediaHeight   Int?
+
+  createdAt   DateTime  @default(now())
+  deliveredAt DateTime?
+  readAt      DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  // Idempotency constraint - the whole point of clientMessageId.
+  @@unique([conversationId, senderId, clientMessageId], name: "idempotency_key")
+  // Primary pagination path: latest-first / before-cursor queries.
+  @@index([conversationId, createdAt, id])
+  // Supports "my messages" style lookups and moderation auditing.
+  @@index([senderId])
+}
