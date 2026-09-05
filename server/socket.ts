@@ -7,7 +7,7 @@ import { assertConversationMember, ForbiddenError } from "@/lib/db/authorization
 import { registerConnection, registerDisconnection } from "@/lib/socket/presence";
 import { checkRateLimit, messageRateLimit } from "@/lib/rate-limit";
 import { messageSendSchema } from "@/lib/validation/schemas";
-import { checkProfanity } from "@/lib/moderation/profanity";
+import { moderateTextMessage } from "@/lib/moderation/profanity";
 import { createMessageIdempotent } from "@/lib/db/messages";
 import type {
   ClientToServerEvents,
@@ -159,7 +159,7 @@ io.on("connection", async (socket: Socket<ClientToServerEvents, ServerToClientEv
     }
 
     if (payload.type === "TEXT") {
-      const moderation = checkProfanity(payload.content);
+      const moderation = await moderateTextMessage(payload.content);
       if (!moderation.allowed) {
         ack({
           ok: false,

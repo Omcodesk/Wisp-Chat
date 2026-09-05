@@ -79,3 +79,53 @@ export function checkProfanity(rawText: string): ProfanityCheckResult {
   }
   return { allowed: true };
 }
+
+/**
+ * Combined server-side text moderation:
+ * 1. Fast local normalization & evasion check (<1ms)
+ * 2. If configured, cloud AI inspection via Sightengine Text Moderation API
+ */
+export async function moderateTextMessage(rawText: string): Promise<ProfanityCheckResult> {
+  // Step 1: Fast local anti-evasion check
+  const localCheck = checkProfanity(rawText);
+  if (!localCheck.allowed) {
+    return localCheck;
+  }
+
+  // Step 2: Sightengine Text API check
+  const apiUser = process.env.SIGHTENGINE_API_USER;
+  const apiSecret = process.env.SIGHTENGINE_API_SECRET;
+
+  if (apiUser && apiSecret) {
+    try {
+      const url = new URL("https://api.sightengine.com/1.0/text/check.json");
+      url.searchParams.set("text", rawText);
+      url.searchParams.set("lang", "en");
+      url.searchParams.set("mode", "standard");
+      url.searchParams.set("api_user", apiUser);
+      url.searchParams.set("api_secret", apiSecret);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+
+      const res = await fetch(url.toString(), { signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          status: string;
+          profanity?: { matches?: Array<{ type: string; match: string }> };
+        };
+
+        if (data.status === "success" && data.profanity?.matches && data.profanity.matches.length > 0) {
+          return { allowed: false, reason: "prohibited_language" };
+        }
+      }
+    } catch {
+      // Graceful fallback to local filter if Sightengine API is temporarily unreachable
+    }
+  }
+
+  return { allowed: true };
+}
+
